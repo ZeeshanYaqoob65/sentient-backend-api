@@ -48,22 +48,21 @@ export class UsershipController {
         relations: ["brand"],
       });
 
-      // Get usership details with competitor brands
-      const usershipDetails = await usershipDetailRepository
-        .createQueryBuilder("detail")
-        .leftJoin("cbrand", "competitor", "detail.cbrid = competitor.cbrid")
-        .select([
-          "detail.asudid",
-          "detail.cbrid",
-          "detail.interception",
-          "detail.productive",
-          "detail.com_sale",
-          "competitor.cbrname as competitor_name",
-        ])
-        .where("detail.uid = :uid", { uid })
-        .andWhere("detail.sale_date = :dateString", { dateString })
-        .orderBy("competitor.cbrid", "ASC")
-        .getRawMany();
+      // Use raw SQL query for usership details with competitor brands
+      const usershipDetails = await AppDataSource.query(
+        `SELECT 
+          UD.asudid,
+          UD.cbrid,
+          UD.interception,
+          UD.productive,
+          UD.com_sale,
+          CB.cbrname as competitor_name
+        FROM usership_detail UD
+        LEFT JOIN cbrand CB ON UD.cbrid = CB.cbrid
+        WHERE UD.uid = ? AND UD.sale_date = ?
+        ORDER BY CB.cbrid ASC`,
+        [uid, dateString]
+      );
 
       // Get attendance status
       const attendance = await attendanceRepository.findOne({
@@ -71,14 +70,12 @@ export class UsershipController {
       });
 
       // Transform data to match frontend format
-      // Note: Frontend expects products array, but usership is about competitor brands
-      // We'll transform competitor brands into products format
-      const products = usershipDetails.map((detail) => ({
+      const products = usershipDetails.map((detail: any) => ({
         productId: detail.cbrid?.toString() || "",
         productName: detail.competitor_name || "",
-        interceptedCustomer: parseFloat(detail.interception) || 0,
-        productiveCustomer: parseFloat(detail.productive) || 0,
-        asudid: detail.asudid, // Keep for updates
+        interceptedCustomer: parseInt(detail.interception) || 0,
+        productiveCustomer: parseInt(detail.productive) || 0,
+        asudid: detail.asudid,
       }));
 
       return res.json({
@@ -253,20 +250,19 @@ export class UsershipController {
         relations: ["brand"],
       });
 
-      // Get usership details with competitor brands
-      const competitionData = await usershipDetailRepository
-        .createQueryBuilder("detail")
-        .leftJoin("cbrand", "competitor", "detail.cbrid = competitor.cbrid")
-        .select([
-          "detail.asudid",
-          "detail.cbrid",
-          "detail.com_sale",
-          "competitor.cbrname as competitor_name",
-        ])
-        .where("detail.uid = :uid", { uid })
-        .andWhere("detail.sale_date = :dateString", { dateString })
-        .orderBy("competitor.cbrid", "ASC")
-        .getRawMany();
+      // Use raw SQL query for competition sales with competitor brands
+      const competitionData = await AppDataSource.query(
+        `SELECT 
+          UD.asudid,
+          UD.cbrid,
+          UD.com_sale,
+          CB.cbrname as competitor_name
+        FROM usership_detail UD
+        LEFT JOIN cbrand CB ON UD.cbrid = CB.cbrid
+        WHERE UD.uid = ? AND UD.sale_date = ?
+        ORDER BY CB.cbrid ASC`,
+        [uid, dateString]
+      );
 
       // Get attendance status
       const attendance = await attendanceRepository.findOne({
@@ -274,11 +270,11 @@ export class UsershipController {
       });
 
       // Transform data to match frontend format
-      const competitors = competitionData.map((detail) => ({
+      const competitors = competitionData.map((detail: any) => ({
         competitorId: detail.cbrid?.toString() || "",
         competitorName: detail.competitor_name || "",
-        salesValue: parseFloat(detail.com_sale) || 0,
-        asudid: detail.asudid, // Keep for updates
+        salesValue: parseInt(detail.com_sale) || 0,
+        asudid: detail.asudid,
       }));
 
       return res.json({

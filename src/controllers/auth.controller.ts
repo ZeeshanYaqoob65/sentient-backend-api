@@ -174,38 +174,6 @@ export class AuthController {
           uatdate: timestamp,
         });
         await attendanceRepository.save(attendance);
-
-        // 6. Create assignment_sale records for each product in assignment_detail
-        const assignmentDetails = await assignmentDetailRepository.find({
-          where: {
-            asid: assignment.asid,
-          },
-        });
-
-        for (const detail of assignmentDetails) {
-          // Check if assignment_sale record already exists for today
-          const existingSale = await assignmentSaleRepository.findOne({
-            where: {
-              uid: user.uid,
-              asdid: detail.asdid,
-              sale_date: at_date,
-            },
-          });
-
-          if (!existingSale) {
-            const assignmentSale = assignmentSaleRepository.create({
-              uid: user.uid,
-              asdid: detail.asdid,
-              asid: detail.asid,
-              brid: detail.brid,
-              pid: detail.pid,
-              sale_date: at_date,
-              sale_target: Number(detail.asdtarget),
-              assdate: timestamp,
-            });
-            await assignmentSaleRepository.save(assignmentSale);
-          }
-        }
       } else {
         // 7. Update timein if attendance exists but timein is 0
         if (attendance.timein === 0) {
@@ -216,9 +184,43 @@ export class AuthController {
         }
       }
 
+      // 6. Always check and create assignment_sale records if they don't exist
+      // This ensures records are created even if attendance already exists
+      const assignmentDetails = await assignmentDetailRepository.find({
+        where: {
+          asid: assignment.asid,
+          asdstatus: 0, // Only active assignment details
+        },
+      });
+
+      for (const detail of assignmentDetails) {
+        // Check if assignment_sale record already exists for today
+        const existingSale = await assignmentSaleRepository.findOne({
+          where: {
+            uid: user.uid,
+            asdid: detail.asdid,
+            sale_date: at_date,
+          },
+        });
+
+        if (!existingSale) {
+          const assignmentSale = assignmentSaleRepository.create({
+            uid: user.uid,
+            asdid: detail.asdid,
+            asid: detail.asid,
+            brid: detail.brid,
+            pid: detail.pid,
+            sale_date: at_date,
+            sale_target: Number(detail.asdtarget),
+            assdate: timestamp,
+          });
+          await assignmentSaleRepository.save(assignmentSale);
+        }
+      }
+
       // 8. Create usership records if they don't exist for today
       const brid = assignment.brid;
-      const existingUsership = await usershipRepository.findOne({
+      let existingUsership = await usershipRepository.findOne({
         where: {
           uid: user.uid,
           brid: brid,
@@ -226,14 +228,14 @@ export class AuthController {
         },
       });
 
-      if (!existingUsership) {
-        // Query com_brand table for competitor brands
-        const competitorBrands = await AppDataSource.query(
-          `SELECT brid, cbrid FROM com_brand WHERE brid = ? ORDER BY combrid ASC`,
-          [brid]
-        );
+      // Query com_brand table for competitor brands
+      const competitorBrands = await AppDataSource.query(
+        `SELECT brid, cbrid FROM com_brand WHERE brid = ? ORDER BY combrid ASC`,
+        [brid]
+      );
 
-        if (competitorBrands && competitorBrands.length > 0) {
+      if (competitorBrands && competitorBrands.length > 0) {
+        if (!existingUsership) {
           // Create usership record
           const usership = usershipRepository.create({
             uid: user.uid,
@@ -243,10 +245,24 @@ export class AuthController {
             asudate: timestamp,
           });
           await usershipRepository.save(usership);
-          const asuid = usership.asuid;
+          existingUsership = usership;
+        }
 
-          // Create usership_detail records for each competitor brand
-          for (const comBrand of competitorBrands) {
+        const asuid = existingUsership.asuid;
+
+        // Always check and create usership_detail records if they don't exist
+        // This ensures records are created even if usership already exists
+        for (const comBrand of competitorBrands) {
+          const existingDetail = await usershipDetailRepository.findOne({
+            where: {
+              asuid: asuid,
+              uid: user.uid,
+              cbrid: comBrand.cbrid,
+              sale_date: at_date,
+            },
+          });
+
+          if (!existingDetail) {
             const usershipDetail = usershipDetailRepository.create({
               asuid: asuid,
               uid: user.uid,
