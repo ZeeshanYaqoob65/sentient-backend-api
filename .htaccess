@@ -1,0 +1,18 @@
+# Apache configuration for Node.js application on cPanel
+# This proxies all requests to the Node.js app running on port 3000
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  
+  # Don't rewrite requests for static files or directories
+  RewriteCond %{REQUEST_URI} !^/uploads/
+  RewriteCond %{REQUEST_URI} !^/cgi-bin/
+  RewriteCond %{REQUEST_URI} !^/\.well-known/
+  RewriteCond %{REQUEST_URI} !^/node_modules/
+  RewriteCond %{REQUEST_URI} !\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ [NC]
+  
+  # Proxy all other requests to Node.js app
+  # Note: [P] flag requires mod_proxy and mod_proxy_http to be enabled
+  RewriteRule ^(.*)$ http://127.0.0.1:3000/$1 [P,L]
+</IfModule>
+
