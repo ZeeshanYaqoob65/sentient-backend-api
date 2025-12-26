@@ -5,6 +5,7 @@ import helmet from "helmet";
 import morgan from "morgan";
 import compression from "compression";
 import * as dotenv from "dotenv";
+import expressStatusMonitor from "express-status-monitor";
 import { AppDataSource } from "./src/config/database";
 
 // Import routes
@@ -26,7 +27,48 @@ app.use(
   })
 );
 app.use(compression() as any); // Compress responses
-app.use(morgan("combined")); // Logging
+
+// Express Status Monitor Dashboard
+// Access at: http://localhost:3000/status
+app.use(
+  expressStatusMonitor({
+    title: "Sentient API Monitor",
+    path: "/status",
+    spans: [
+      { interval: 1, retention: 60 }, // 1 minute spans, keep 60
+      { interval: 5, retention: 60 }, // 5 minute spans, keep 60
+      { interval: 15, retention: 60 }, // 15 minute spans, keep 60
+    ],
+    chartVisibility: {
+      cpu: true,
+      mem: true,
+      load: true,
+      heap: true,
+      responseTime: true,
+      rps: true,
+      statusCodes: true,
+    },
+    healthChecks: [
+      {
+        protocol: "http",
+        host: "localhost",
+        path: "/health",
+        port: parseInt(String(PORT)),
+      },
+    ],
+  })
+);
+
+// Enhanced logging with response time
+morgan.token("response-time-ms", (req: any, res: any) => {
+  return `${res["response-time"]}ms`;
+});
+app.use(
+  morgan(
+    ":method :url :status :response-time-ms - :res[content-length] bytes"
+  ) as any
+);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -93,4 +135,3 @@ process.on("SIGINT", async () => {
 });
 
 export default app;
-
