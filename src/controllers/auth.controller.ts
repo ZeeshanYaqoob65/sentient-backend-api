@@ -204,9 +204,7 @@ export class AuthController {
           select: ["asdid"],
         });
 
-        const existingAsdidSet = new Set(
-          existingSales.map((s) => s.asdid)
-        );
+        const existingAsdidSet = new Set(existingSales.map((s) => s.asdid));
 
         // Prepare bulk insert data
         const salesToInsert = assignmentDetails
@@ -281,9 +279,7 @@ export class AuthController {
           select: ["cbrid"],
         });
 
-        const existingCbridSet = new Set(
-          existingDetails.map((d) => d.cbrid)
-        );
+        const existingCbridSet = new Set(existingDetails.map((d) => d.cbrid));
 
         // Prepare bulk insert data
         const detailsToInsert = competitorBrands
