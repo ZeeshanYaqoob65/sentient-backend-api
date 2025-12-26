@@ -186,6 +186,7 @@ export class AuthController {
 
       // 6. Always check and create assignment_sale records if they don't exist
       // This ensures records are created even if attendance already exists
+      // OPTIMIZED: Use bulk insert instead of individual saves
       const assignmentDetails = await assignmentDetailRepository.find({
         where: {
           asid: assignment.asid,
@@ -193,28 +194,46 @@ export class AuthController {
         },
       });
 
-      for (const detail of assignmentDetails) {
-        // Check if assignment_sale record already exists for today
-        const existingSale = await assignmentSaleRepository.findOne({
+      if (assignmentDetails.length > 0) {
+        // Get existing assignment_sale records in one query
+        const existingSales = await assignmentSaleRepository.find({
           where: {
             uid: user.uid,
-            asdid: detail.asdid,
             sale_date: at_date,
           },
+          select: ["asdid"],
         });
 
-        if (!existingSale) {
-          const assignmentSale = assignmentSaleRepository.create({
-            uid: user.uid,
-            asdid: detail.asdid,
-            asid: detail.asid,
-            brid: detail.brid,
-            pid: detail.pid,
-            sale_date: at_date,
-            sale_target: Number(detail.asdtarget),
-            assdate: timestamp,
-          });
-          await assignmentSaleRepository.save(assignmentSale);
+        const existingAsdidSet = new Set(
+          existingSales.map((s) => s.asdid)
+        );
+
+        // Prepare bulk insert data
+        const salesToInsert = assignmentDetails
+          .filter((detail) => !existingAsdidSet.has(detail.asdid))
+          .map((detail) => [
+            user.uid,
+            detail.asdid,
+            detail.asid,
+            detail.brid,
+            detail.pid,
+            at_date,
+            Number(detail.asdtarget),
+            timestamp,
+          ]);
+
+        // Bulk insert if there are records to insert
+        if (salesToInsert.length > 0) {
+          const placeholders = salesToInsert
+            .map(() => "(?, ?, ?, ?, ?, ?, ?, ?)")
+            .join(", ");
+          const values = salesToInsert.flat();
+
+          await AppDataSource.query(
+            `INSERT INTO assignment_sale (uid, asdid, asid, brid, pid, sale_date, sale_target, assdate) 
+             VALUES ${placeholders}`,
+            values
+          );
         }
       }
 
@@ -251,28 +270,45 @@ export class AuthController {
         const asuid = existingUsership.asuid;
 
         // Always check and create usership_detail records if they don't exist
-        // This ensures records are created even if usership already exists
-        for (const comBrand of competitorBrands) {
-          const existingDetail = await usershipDetailRepository.findOne({
-            where: {
-              asuid: asuid,
-              uid: user.uid,
-              cbrid: comBrand.cbrid,
-              sale_date: at_date,
-            },
-          });
+        // OPTIMIZED: Use bulk insert instead of individual saves
+        // Get existing usership_detail records in one query
+        const existingDetails = await usershipDetailRepository.find({
+          where: {
+            asuid: asuid,
+            uid: user.uid,
+            sale_date: at_date,
+          },
+          select: ["cbrid"],
+        });
 
-          if (!existingDetail) {
-            const usershipDetail = usershipDetailRepository.create({
-              asuid: asuid,
-              uid: user.uid,
-              brid: brid,
-              cbrid: comBrand.cbrid,
-              sale_date: at_date,
-              asuddate: timestamp,
-            });
-            await usershipDetailRepository.save(usershipDetail);
-          }
+        const existingCbridSet = new Set(
+          existingDetails.map((d) => d.cbrid)
+        );
+
+        // Prepare bulk insert data
+        const detailsToInsert = competitorBrands
+          .filter((comBrand: any) => !existingCbridSet.has(comBrand.cbrid))
+          .map((comBrand: any) => [
+            asuid,
+            user.uid,
+            brid,
+            comBrand.cbrid,
+            at_date,
+            timestamp,
+          ]);
+
+        // Bulk insert if there are records to insert
+        if (detailsToInsert.length > 0) {
+          const placeholders = detailsToInsert
+            .map(() => "(?, ?, ?, ?, ?, ?)")
+            .join(", ");
+          const values = detailsToInsert.flat();
+
+          await AppDataSource.query(
+            `INSERT INTO usership_detail (asuid, uid, brid, cbrid, sale_date, asuddate) 
+             VALUES ${placeholders}`,
+            values
+          );
         }
       }
 
